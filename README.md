@@ -13,7 +13,7 @@ IsUp is a simple and effective tool to monitor your internet connection for down
 
 ## Installation
 
-1. Visit the [IsUp Releases](https://github.com/mylifetools/isup/releases) page to download the latest version.
+1. Visit the [IsUp Releases](https://github.com/TrueFix/isup/releases) page to download the latest version.
 2. Download the release package suitable for your operating system.
 3. Follow the instructions in the installation guide included in the release package.
 
