@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.0.1 — 2026-10-16
+
+### Changed
+
+- Pushing a version tag over SSH now triggers the complete GitHub release
+  pipeline: tests, dependency checks, six platform builds, archive checksums,
+  and publication through GitHub Actions' built-in repository token.
+- Local GitHub CLI authentication is no longer required to publish releases.
+- Release archives now include this changelog alongside the README and license.
+
 ## v2.0.0 — 2026-10-16
 
 ### Added

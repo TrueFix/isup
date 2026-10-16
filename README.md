@@ -59,8 +59,8 @@ Download the archive matching your OS and CPU from
 (`isup.exe` on Windows). `amd64` is for Intel/AMD 64-bit machines; `arm64` is for
 Apple Silicon and other ARM64 machines. `darwin` means macOS.
 
-Release archives include this README, the license, and the executable. Each has a
-SHA-256 checksum sidecar. On Linux, for example:
+Release archives include this README, the changelog, the license, and the
+executable. Each has a SHA-256 checksum sidecar. On Linux, for example:
 
 ```sh
 sha256sum -c isup-VERSION-linux-amd64.tar.gz.sha256
@@ -212,11 +212,24 @@ connections, deadlines, cancellation, multi-provider consensus, direct DNS repli
 captive portals, TLS validation, partial-connectivity transitions, log retention,
 process shutdown, terminal resizing, keyboard navigation, and safe error rendering.
 
-CI tests Linux, Windows, and macOS. Publishing a GitHub Release triggers tests,
-then builds CGO-free `amd64` and `arm64` archives for all three platforms and
-uploads archives and checksums using the repository's built-in token. Build
-versions come from the release tag. A release is available after that workflow
-finishes successfully; no custom token secret is required.
+CI tests Linux, Windows, and macOS. Pushing a semantic version tag such as
+`v2.0.1` triggers tests and dependency checks, then builds CGO-free `amd64` and
+`arm64` archives for all three platforms. GitHub Actions creates the release and
+uploads archives and checksums using its built-in repository token. Existing
+manually published releases are also supported. Build versions come from the tag.
+
+Maintainers can publish entirely through the SSH Git remote. Replace `vX.Y.Z`
+with the next unused semantic version:
+
+```sh
+git push origin master
+git tag -a vX.Y.Z -m "IsUp vX.Y.Z"
+git push origin vX.Y.Z
+```
+
+The release is available after the Release workflow finishes successfully. No
+local GitHub CLI login or custom token secret is required. Prerelease tags such
+as `v2.1.0-rc.1` are published as prereleases.
 
 ## License
 

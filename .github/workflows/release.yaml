@@ -1,8 +1,14 @@
 name: Release
 
 on:
+  push:
+    tags: ['v*']
   release:
     types: [published]
+
+concurrency:
+  group: release-${{ github.event.release.tag_name || github.ref_name }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -13,11 +19,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ github.event.release.tag_name || github.ref_name }}
           persist-credentials: false
       - uses: actions/setup-go@v5
         with:
           go-version: stable
+      - name: Validate release version
+        env:
+          VERSION: ${{ github.event.release.tag_name || github.ref_name }}
+        run: '[[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]'
       - run: go mod verify
       - run: go vet ./...
       - run: go test -race ./...
@@ -34,7 +44,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ github.event.release.tag_name || github.ref_name }}
           persist-credentials: false
       - uses: actions/setup-go@v5
         with:
@@ -44,19 +54,19 @@ jobs:
           CGO_ENABLED: '0'
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-          VERSION: ${{ github.event.release.tag_name }}
+          VERSION: ${{ github.event.release.tag_name || github.ref_name }}
         run: |
           mkdir -p dist
           binary=isup
           if [ "$GOOS" = windows ]; then binary=isup.exe; fi
           go build -trimpath -ldflags "-s -w -X main.version=$VERSION" -o "dist/$binary" .
-          cp README.md LICENSE dist/
+          cp README.md CHANGELOG.md LICENSE dist/
           archive="isup-${VERSION}-${GOOS}-${GOARCH}"
           if [ "$GOOS" = windows ]; then
-            (cd dist && zip "../$archive.zip" "$binary" README.md LICENSE)
+            (cd dist && zip "../$archive.zip" "$binary" README.md CHANGELOG.md LICENSE)
             archive="$archive.zip"
           else
-            tar -czf "$archive.tar.gz" -C dist "$binary" README.md LICENSE
+            tar -czf "$archive.tar.gz" -C dist "$binary" README.md CHANGELOG.md LICENSE
             archive="$archive.tar.gz"
           fi
           sha256sum "$archive" > "$archive.sha256"
@@ -75,13 +85,25 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || github.ref_name }}
+          persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
           path: assets
           merge-multiple: true
-      - name: Upload release assets
+      - name: Publish release and assets
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          VERSION: ${{ github.event.release.tag_name }}
-        run: gh release upload "$VERSION" assets/* --clobber
+          VERSION: ${{ github.event.release.tag_name || github.ref_name }}
+        run: |
+          if gh release view "$VERSION" --json id > /dev/null 2>&1; then
+            gh release upload "$VERSION" assets/* --clobber
+          else
+            extra=()
+            if [[ "$VERSION" == *-* ]]; then extra+=(--prerelease); fi
+            gh release create "$VERSION" assets/* --verify-tag \
+              --title "IsUp $VERSION" --notes-file CHANGELOG.md "${extra[@]}"
+          fi
