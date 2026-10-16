@@ -1,31 +1,44 @@
-name: Go package test
+name: Test
 
-on: [push]
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  test:
     strategy:
+      fail-fast: false
       matrix:
-        go-version: ['1.23.4']
-
+        include:
+          - os: ubuntu-latest
+            go: '1.26.x'
+          - os: ubuntu-latest
+            go: stable
+          - os: windows-latest
+            go: stable
+          - os: macos-latest
+            go: stable
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
         with:
-          go-version: ${{ matrix.go-version }}
-
-      - name: Install dependencies
-        run: go get .
-
-      - name: Build
-        run: GOOS=windows GOARCH=amd64 go build -v -o isup-${{ matrix.go-version }}.exe
-
-      - name: Upload Go test results
-        uses: actions/upload-artifact@v4
+          persist-credentials: false
+      - uses: actions/setup-go@v5
         with:
-          name: isup-${{ matrix.go-version }}
-          path: |
-            isup-${{ matrix.go-version }}.exe
+          go-version: ${{ matrix.go }}
+          cache: true
+      - run: go mod verify
+      - run: go vet ./...
+      - run: go test -race -cover ./...
+      - name: Check reachable dependency vulnerabilities
+        if: matrix.os == 'ubuntu-latest' && matrix.go == 'stable'
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+      - name: Check pure-Go build
+        shell: bash
+        env:
+          CGO_ENABLED: '0'
+        run: go build -trimpath -o "${RUNNER_TEMP}/isup-build" .

@@ -1,29 +1,87 @@
-name: Go release
+name: Release
 
 on:
   release:
     types: [published]
-    
+
+permissions:
+  contents: read
 
 jobs:
-  releases-matrix:
-    name: Release Go Binary
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - run: go mod verify
+      - run: go vet ./...
+      - run: go test -race ./...
+      - run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+  build:
+    needs: test
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        # build and publish in parallel: windows/386, windows/amd64
-        goarch: ["386", amd64]
-
+        goos: [linux, windows, darwin]
+        goarch: [amd64, arm64]
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Go release
-        uses: wangyoucao577/go-release-action@v1.53
+      - uses: actions/checkout@v4
         with:
-          github_token: ${{ secrets.TOKEN }}
-          goos: windows
-          goarch: ${{ matrix.goarch }}
-          binary_name: "isup"
-          asset_name: isup-${{ matrix.goarch }}
-          compress_assets: OFF
+          ref: ${{ github.event.release.tag_name }}
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - name: Build and package
+        env:
+          CGO_ENABLED: '0'
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          VERSION: ${{ github.event.release.tag_name }}
+        run: |
+          mkdir -p dist
+          binary=isup
+          if [ "$GOOS" = windows ]; then binary=isup.exe; fi
+          go build -trimpath -ldflags "-s -w -X main.version=$VERSION" -o "dist/$binary" .
+          cp README.md LICENSE dist/
+          archive="isup-${VERSION}-${GOOS}-${GOARCH}"
+          if [ "$GOOS" = windows ]; then
+            (cd dist && zip "../$archive.zip" "$binary" README.md LICENSE)
+            archive="$archive.zip"
+          else
+            tar -czf "$archive.tar.gz" -C dist "$binary" README.md LICENSE
+            archive="$archive.tar.gz"
+          fi
+          sha256sum "$archive" > "$archive.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: isup-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: |
+            isup-*.zip
+            isup-*.tar.gz
+            isup-*.sha256
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ github.event.release.tag_name }}
+        run: gh release upload "$VERSION" assets/* --clobber
